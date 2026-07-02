@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: herald-control-plane
+    static_configs:
+      - targets:
+          - control-plane-1:7700
+          - control-plane-2:7701
+          - control-plane-3:7702
+    metrics_path: /metrics
