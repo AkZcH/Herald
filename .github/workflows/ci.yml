@@ -45,6 +45,6 @@ jobs:
           HERALD_DB_URL: postgres://herald:herald@localhost:5432/herald?sslmode=disable
 
       - name: Run migration test
-        run: go test ./migrations/... -v -count=1
+        run: go test ./internal/store/... -v -count=1
         env:
           HERALD_DB_URL: postgres://herald:herald@127.0.0.1:5432/herald?sslmode=disable
