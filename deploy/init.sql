@@ -1,0 +1,1 @@
+ALTER USER herald WITH PASSWORD 'herald';
