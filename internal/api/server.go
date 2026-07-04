@@ -40,6 +40,7 @@ func (s *Server) setupMiddleware() {
 	s.router.Use(middleware.RequestID)
 	s.router.Use(middleware.RealIP)
 	s.router.Use(middleware.Recoverer)
+	s.router.Use(zerologMiddleware)
 }
 
 func (s *Server) setupRoutes() {
@@ -54,13 +55,13 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) Start() error {
 	log.Info().
-		Str("node_id", s.nodeID).
+		// Str("node_id", s.nodeID).
 		Str("port", s.port).
 		Msg("control plane starting")
 	return s.http.ListenAndServe()
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
-	log.Info().Str("node_id", s.nodeID).Msg("control plane shutting down")
+	log.Info().Msg("control plane shutting down")
 	return s.http.Shutdown(ctx)
 }
