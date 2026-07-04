@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/AkZcH/herald/internal/api"
+	"github.com/AkZcH/herald/internal/store"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -27,7 +28,20 @@ func main() {
 		port = "7700"
 	}
 
+	dbURL := os.Getenv("HERALD_DB_URL")
+	if dbURL == "" {
+		log.Fatal().Msg("HERALD_DB_URL is required")
+	}
+
 	log.Logger = log.With().Str("node_id", nodeID).Logger()
+
+	db, err := store.NewDB(dbURL)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to connect to database")
+	}
+	defer db.Close()
+
+	log.Info().Msg("database connected")
 
 	srv := api.NewServer(nodeID, port)
 
