@@ -43,7 +43,7 @@ func main() {
 
 	log.Info().Msg("database connected")
 
-	srv := api.NewServer(nodeID, port)
+	srv := api.NewServer(nodeID, port, db.DB)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)

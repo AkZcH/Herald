@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"time"
@@ -16,12 +17,14 @@ type Server struct {
 	http   *http.Server
 	nodeID string
 	port   string
+	db     *sql.DB
 }
 
-func NewServer(nodeID, port string) *Server {
+func NewServer(nodeID, port string, db *sql.DB) *Server {
 	s := &Server{
 		nodeID: nodeID,
 		port:   port,
+		db:     db,
 	}
 	s.router = chi.NewRouter()
 	s.setupMiddleware()
@@ -55,13 +58,13 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) Start() error {
 	log.Info().
-		// Str("node_id", s.nodeID).
+		Str("node_id", s.nodeID).
 		Str("port", s.port).
 		Msg("control plane starting")
 	return s.http.ListenAndServe()
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
-	log.Info().Msg("control plane shutting down")
+	log.Info().Str("node_id", s.nodeID).Msg("control plane shutting down")
 	return s.http.Shutdown(ctx)
 }
