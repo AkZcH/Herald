@@ -75,6 +75,7 @@ func (n *Node) IsLeader() bool {
 
 func (n *Node) Start(ctx context.Context) {
 	go n.electionLoop(ctx)
+	go n.startHeartbeat(ctx)
 }
 
 func (n *Node) Stop() {
@@ -127,5 +128,48 @@ func (n *Node) tryAcquireLeadership(ctx context.Context) {
 				Str("node_id", n.id).
 				Msg("lost leadership")
 		}
+	}
+}
+
+func (n *Node) startHeartbeat(ctx context.Context) {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-n.stopCh:
+			return
+		case <-ticker.C:
+			if n.IsLeader() {
+				n.refreshLock(ctx)
+			}
+		}
+	}
+}
+
+func (n *Node) refreshLock(ctx context.Context) {
+	var held bool
+	err := n.db.QueryRowContext(ctx,
+		`SELECT EXISTS(
+			SELECT 1 FROM pg_locks
+			WHERE locktype='advisory'
+			AND objid=42
+			AND granted=true
+			AND pid=pg_backend_pid()
+		)`,
+	).Scan(&held)
+	if err != nil {
+		log.Error().Err(err).Msg("heartbeat check failed")
+		return
+	}
+
+	if !held {
+		n.mu.Lock()
+		n.role = RoleFollower
+		n.leaderID = ""
+		n.mu.Unlock()
+		log.Warn().Str("node_id", n.id).Msg("lost advisory lock, stepping down")
 	}
 }
