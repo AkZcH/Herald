@@ -29,6 +29,7 @@ func (r Role) String() string {
 type Node struct {
 	id       string
 	db       *sql.DB
+	conn     *sql.Conn
 	role     Role
 	term     int64
 	mu       sync.RWMutex
@@ -74,6 +75,11 @@ func (n *Node) IsLeader() bool {
 }
 
 func (n *Node) Start(ctx context.Context) {
+	conn, err := n.db.Conn(ctx)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to get dedicated raft connection")
+	}
+	n.conn = conn
 	go n.electionLoop(ctx)
 	go n.startHeartbeat(ctx)
 }
@@ -100,7 +106,7 @@ func (n *Node) electionLoop(ctx context.Context) {
 
 func (n *Node) tryAcquireLeadership(ctx context.Context) {
 	var acquired bool
-	err := n.db.QueryRowContext(ctx,
+	err := n.conn.QueryRowContext(ctx,
 		"SELECT pg_try_advisory_lock(42)",
 	).Scan(&acquired)
 	if err != nil {
@@ -116,17 +122,12 @@ func (n *Node) tryAcquireLeadership(ctx context.Context) {
 			n.term++
 			n.role = RoleLeader
 			n.leaderID = n.id
-			log.Info().
-				Str("node_id", n.id).
-				Int64("term", n.term).
-				Msg("leader elected")
+			log.Info().Int64("term", n.term).Msg("leader elected")
 		}
 	} else {
 		if n.role == RoleLeader {
 			n.role = RoleFollower
-			log.Info().
-				Str("node_id", n.id).
-				Msg("lost leadership")
+			log.Info().Msg("lost leadership")
 		}
 	}
 }
@@ -151,7 +152,7 @@ func (n *Node) startHeartbeat(ctx context.Context) {
 
 func (n *Node) refreshLock(ctx context.Context) {
 	var held bool
-	err := n.db.QueryRowContext(ctx,
+	err := n.conn.QueryRowContext(ctx,
 		`SELECT EXISTS(
 			SELECT 1 FROM pg_locks
 			WHERE locktype='advisory'
@@ -170,6 +171,6 @@ func (n *Node) refreshLock(ctx context.Context) {
 		n.role = RoleFollower
 		n.leaderID = ""
 		n.mu.Unlock()
-		log.Warn().Str("node_id", n.id).Msg("lost advisory lock, stepping down")
+		log.Warn().Msg("lost advisory lock, stepping down")
 	}
 }

@@ -7,24 +7,27 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/AkZcH/herald/internal/raft"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/rs/zerolog/log"
 )
 
 type Server struct {
-	router *chi.Mux
-	http   *http.Server
-	nodeID string
-	port   string
-	db     *sql.DB
+	router   *chi.Mux
+	http     *http.Server
+	nodeID   string
+	port     string
+	db       *sql.DB
+	raftNode *raft.Node
 }
 
-func NewServer(nodeID, port string, db *sql.DB) *Server {
+func NewServer(nodeID, port string, db *sql.DB, raftNode *raft.Node) *Server {
 	s := &Server{
-		nodeID: nodeID,
-		port:   port,
-		db:     db,
+		nodeID:   nodeID,
+		port:     port,
+		db:       db,
+		raftNode: raftNode,
 	}
 	s.router = chi.NewRouter()
 	s.setupMiddleware()
@@ -48,6 +51,7 @@ func (s *Server) setupMiddleware() {
 
 func (s *Server) setupRoutes() {
 	s.router.Get("/health", s.handleHealth)
+	s.router.Get("/cluster/status", s.handleClusterStatus)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -56,15 +60,23 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"status":"ok","node_id":"%s"}`, s.nodeID)
 }
 
+func (s *Server) handleClusterStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w,
+		`{"node_id":"%s","role":"%s","term":%d,"leader_id":"%s"}`,
+		s.nodeID,
+		s.raftNode.Role().String(),
+		s.raftNode.Term(),
+		s.raftNode.LeaderID(),
+	)
+}
+
 func (s *Server) Start() error {
-	log.Info().
-		Str("node_id", s.nodeID).
-		Str("port", s.port).
-		Msg("control plane starting")
+	log.Info().Str("port", s.port).Msg("control plane starting")
 	return s.http.ListenAndServe()
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
-	log.Info().Str("node_id", s.nodeID).Msg("control plane shutting down")
+	log.Info().Msg("control plane shutting down")
 	return s.http.Shutdown(ctx)
 }

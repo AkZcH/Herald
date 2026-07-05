@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/AkZcH/herald/internal/api"
+	"github.com/AkZcH/herald/internal/raft"
 	"github.com/AkZcH/herald/internal/store"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -43,7 +44,14 @@ func main() {
 
 	log.Info().Msg("database connected")
 
-	srv := api.NewServer(nodeID, port, db.DB)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	raftNode := raft.NewNode(db.DB)
+	raftNode.Start(ctx)
+	log.Info().Msg("raft node started")
+
+	srv := api.NewServer(nodeID, port, db.DB, raftNode)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -55,11 +63,12 @@ func main() {
 	}()
 
 	<-quit
+	cancel()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	shutCtx, shutCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutCancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := srv.Shutdown(shutCtx); err != nil {
 		log.Fatal().Err(err).Msg("shutdown failed")
 	}
 }
