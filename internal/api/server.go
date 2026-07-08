@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/AkZcH/herald/internal/audit"
 	"github.com/AkZcH/herald/internal/raft"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -20,6 +21,7 @@ type Server struct {
 	port     string
 	db       *sql.DB
 	raftNode *raft.Node
+	auditWriter *audit.Writer
 }
 
 func NewServer(nodeID, port string, db *sql.DB, raftNode *raft.Node) *Server {
@@ -28,6 +30,7 @@ func NewServer(nodeID, port string, db *sql.DB, raftNode *raft.Node) *Server {
 		port:     port,
 		db:       db,
 		raftNode: raftNode,
+		auditWriter: audit.NewWriter(db),
 	}
 	s.router = chi.NewRouter()
 	s.setupMiddleware()

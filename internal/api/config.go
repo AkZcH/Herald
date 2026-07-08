@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/AkZcH/herald/internal/audit"
 	"github.com/AkZcH/herald/internal/store"
 	"github.com/AkZcH/herald/internal/vectorclock"
 )
@@ -104,6 +105,26 @@ func (s *Server) handleConfigWrite(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to persist config version")
 		return
 	}
+
+var oldValue []byte
+if prev != nil {
+    oldValue = prev.Value
+}
+
+if err := s.auditWriter.Write(r.Context(), audit.Entry{
+    EventType:   audit.EventConfigWrite,
+    Key:         req.Key,
+    Namespace:   req.Namespace,
+    OldValue:    oldValue,
+    NewValue:    valueJSON,
+    VersionID:   versionID,
+    VectorClock: clockJSON,
+    Actor:       req.PushedBy,
+    Targeting:   targetingJSON,
+}); err != nil {
+    writeError(w, http.StatusInternalServerError, "failed to write audit log")
+    return
+}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
