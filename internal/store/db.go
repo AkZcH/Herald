@@ -29,3 +29,7 @@ func NewDB(dbURL string) (*DB, error) {
 
 	return &DB{db}, nil
 }
+
+func NewDBFromSQL(db *sql.DB) *DB {
+	return &DB{db}
+}
