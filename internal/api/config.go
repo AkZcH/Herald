@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/AkZcH/herald/internal/store"
+	"github.com/AkZcH/herald/internal/vectorclock"
 )
 
 type configWriteRequest struct {
@@ -18,10 +19,11 @@ type configWriteRequest struct {
 }
 
 type configWriteResponse struct {
-	VersionID string `json:"version_id"`
-	Key       string `json:"key"`
-	Namespace string `json:"namespace"`
-	Status    string `json:"status"`
+	VersionID   string `json:"version_id"`
+	Key         string `json:"key"`
+	Namespace   string `json:"namespace"`
+	Status      string `json:"status"`
+	VectorClock any    `json:"vector_clock"`
 }
 
 func (s *Server) handleConfigWrite(w http.ResponseWriter, r *http.Request) {
@@ -59,17 +61,44 @@ func (s *Server) handleConfigWrite(w http.ResponseWriter, r *http.Request) {
 		targetingJSON, _ = json.Marshal(req.TargetingLabels)
 	}
 
+	db := store.NewDBFromSQL(s.db)
+
+	prev, err := db.GetLatestConfigVersion(r.Context(), req.Key, req.Namespace)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to fetch previous version")
+		return
+	}
+
+	vc := vectorclock.New()
+	if prev != nil {
+		vc, err = vectorclock.FromJSON(prev.VectorClock)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to parse vector clock")
+			return
+		}
+	}
+	vc = vc.Increment(s.nodeID)
+
+	clockJSON, err := vc.ToJSON()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to serialize vector clock")
+		return
+	}
+
 	cv := store.ConfigVersion{
 		Key:             req.Key,
 		Namespace:       req.Namespace,
 		Value:           valueJSON,
-		VectorClock:     []byte("{}"),
+		VectorClock:     clockJSON,
 		Status:          "PENDING",
 		TargetingLabels: targetingJSON,
 		PushedBy:        req.PushedBy,
 	}
 
-	db := store.NewDBFromSQL(s.db)
+	if prev != nil {
+		cv.PreviousID = &prev.ID
+	}
+
 	versionID, err := db.InsertConfigVersion(r.Context(), cv)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to persist config version")
@@ -79,10 +108,11 @@ func (s *Server) handleConfigWrite(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(configWriteResponse{
-		VersionID: versionID,
-		Key:       req.Key,
-		Namespace: req.Namespace,
-		Status:    "PENDING",
+		VersionID:   versionID,
+		Key:         req.Key,
+		Namespace:   req.Namespace,
+		Status:      "PENDING",
+		VectorClock: vc,
 	})
 }
 

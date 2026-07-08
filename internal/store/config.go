@@ -63,7 +63,6 @@ func (db *DB) GetLatestConfigVersion(ctx context.Context, key, namespace string)
 		       vector_clock, status, pushed_by
 		FROM config_versions
 		WHERE key = $1 AND namespace = $2
-		AND status = 'COMMITTED'
 		ORDER BY created_at DESC
 		LIMIT 1
 	`, key, namespace).Scan(
