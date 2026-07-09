@@ -2,12 +2,14 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/AkZcH/herald/internal/audit"
 	"github.com/AkZcH/herald/internal/store"
 	"github.com/AkZcH/herald/internal/vectorclock"
+	"github.com/go-chi/chi/v5"
 )
 
 type configWriteRequest struct {
@@ -25,6 +27,16 @@ type configWriteResponse struct {
 	Namespace   string `json:"namespace"`
 	Status      string `json:"status"`
 	VectorClock any    `json:"vector_clock"`
+}
+
+type configGetResponse struct {
+	Key         string         `json:"key"`
+	Namespace   string         `json:"namespace"`
+	Value       any            `json:"value"`
+	VersionID   string         `json:"version_id"`
+	Status      string         `json:"status"`
+	VectorClock map[string]int `json:"vector_clock"`
+	PushedBy    string         `json:"pushed_by"`
 }
 
 func (s *Server) handleConfigWrite(w http.ResponseWriter, r *http.Request) {
@@ -141,4 +153,42 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+func (s *Server) handleConfigGet(w http.ResponseWriter, r *http.Request) {
+	key := chi.URLParam(r, "key")
+	namespace := r.URL.Query().Get("namespace")
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	db := store.NewDBFromSQL(s.db)
+	cv, err := db.GetLatestConfigVersion(r.Context(), key, namespace)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to fetch config")
+		return
+	}
+	if cv == nil {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("key %q not found in namespace %q", key, namespace))
+		return
+	}
+
+	var value any
+	if err := json.Unmarshal(cv.Value, &value); err != nil {
+		value = string(cv.Value)
+	}
+
+	var vc map[string]int
+	json.Unmarshal(cv.VectorClock, &vc)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(configGetResponse{
+		Key:         cv.Key,
+		Namespace:   cv.Namespace,
+		Value:       value,
+		VersionID:   cv.ID,
+		Status:      cv.Status,
+		VectorClock: vc,
+		PushedBy:    cv.PushedBy,
+	})
 }

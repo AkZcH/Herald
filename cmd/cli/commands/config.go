@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 
 	"github.com/spf13/cobra"
 )
@@ -33,6 +34,16 @@ type configWriteResponse struct {
 	VectorClock map[string]int `json:"vector_clock"`
 }
 
+type configGetResponse struct {
+	Key         string         `json:"key"`
+	Namespace   string         `json:"namespace"`
+	Value       any            `json:"value"`
+	VersionID   string         `json:"version_id"`
+	Status      string         `json:"status"`
+	VectorClock map[string]int `json:"vector_clock"`
+	PushedBy    string         `json:"pushed_by"`
+}
+
 var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Manage configuration",
@@ -45,6 +56,13 @@ var configSetCmd = &cobra.Command{
 	RunE:  runConfigSet,
 }
 
+var configGetCmd = &cobra.Command{
+	Use:   "get <key>",
+	Short: "Get the current value of a config key",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runConfigGet,
+}
+
 func init() {
 	RootCmd.AddCommand(configCmd)
 	configCmd.AddCommand(configSetCmd)
@@ -53,6 +71,8 @@ func init() {
 	configSetCmd.Flags().StringVar(&configTarget, "target", "", "label selector e.g. env=prod,region=us")
 	configSetCmd.Flags().StringVar(&configTTL, "ttl", "", "TTL e.g. 24h")
 	configSetCmd.Flags().StringVar(&configPushedBy, "pushed-by", "cli", "actor name")
+	configCmd.AddCommand(configGetCmd)
+	configGetCmd.Flags().StringVar(&configNamespace, "namespace", "default", "namespace")
 }
 
 func runConfigSet(cmd *cobra.Command, args []string) error {
@@ -104,6 +124,47 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		clockBytes, _ := json.Marshal(result.VectorClock)
 		fmt.Printf("%s vector clock: %s\n", bullet, dim.Render(string(clockBytes)))
 	}
+	fmt.Println()
+
+	return nil
+}
+
+func runConfigGet(cmd *cobra.Command, args []string) error {
+	key := args[0]
+
+	resp, err := httpClient.Get(getURL(fmt.Sprintf("/config/%s?namespace=%s", key, configNamespace)))
+	if err != nil {
+		fmt.Printf("%s could not reach control plane: %s\n", crossMark, err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode == http.StatusNotFound {
+		fmt.Printf("%s key %s not found in namespace %s\n",
+			crossMark,
+			cyan.Render(key),
+			yellow.Render(configNamespace),
+		)
+		return nil
+	}
+
+	var result configGetResponse
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		fmt.Printf("%s unexpected response: %s\n", crossMark, string(respBody))
+		return err
+	}
+
+	valueBytes, _ := json.Marshal(result.Value)
+	clockBytes, _ := json.Marshal(result.VectorClock)
+
+	fmt.Printf("\n%s  %s\n", cyan.Render(result.Key), dim.Render(fmt.Sprintf("(%s)", result.Namespace)))
+	fmt.Printf("  %s  %s\n", dim.Render("value:  "), bold.Render(string(valueBytes)))
+	fmt.Printf("  %s  %s\n", dim.Render("version:"), dim.Render(result.VersionID))
+	fmt.Printf("  %s  %s\n", dim.Render("status: "), yellow.Render(result.Status))
+	fmt.Printf("  %s  %s\n", dim.Render("by:     "), dim.Render(result.PushedBy))
+	fmt.Printf("  %s  %s\n", dim.Render("clock:  "), dim.Render(string(clockBytes)))
 	fmt.Println()
 
 	return nil

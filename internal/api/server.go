@@ -56,6 +56,7 @@ func (s *Server) setupRoutes() {
 	s.router.Get("/health", s.handleHealth)
 	s.router.Get("/cluster/status", s.handleClusterStatus)
 	s.router.Post("/config", s.handleConfigWrite)
+	s.router.Get("/config/{key}", s.handleConfigGet)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
