@@ -27,14 +27,15 @@ func (r Role) String() string {
 }
 
 type Node struct {
-	id       string
-	db       *sql.DB
-	conn     *sql.Conn
-	role     Role
-	term     int64
-	mu       sync.RWMutex
-	stopCh   chan struct{}
-	leaderID string
+	id            string
+	db            *sql.DB
+	electionConn  *sql.Conn
+	heartbeatConn *sql.Conn
+	role          Role
+	term          int64
+	mu            sync.RWMutex
+	stopCh        chan struct{}
+	leaderID      string
 }
 
 func NewNode(db *sql.DB) *Node {
@@ -75,11 +76,18 @@ func (n *Node) IsLeader() bool {
 }
 
 func (n *Node) Start(ctx context.Context) {
-	conn, err := n.db.Conn(ctx)
+	electionConn, err := n.db.Conn(ctx)
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to get dedicated raft connection")
+		log.Fatal().Err(err).Msg("failed to get election connection")
 	}
-	n.conn = conn
+	n.electionConn = electionConn
+
+	heartbeatConn, err := n.db.Conn(ctx)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to get heartbeat connection")
+	}
+	n.heartbeatConn = heartbeatConn
+
 	go n.electionLoop(ctx)
 	go n.startHeartbeat(ctx)
 }
@@ -106,7 +114,7 @@ func (n *Node) electionLoop(ctx context.Context) {
 
 func (n *Node) tryAcquireLeadership(ctx context.Context) {
 	var acquired bool
-	err := n.conn.QueryRowContext(ctx,
+	err := n.electionConn.QueryRowContext(ctx,
 		"SELECT pg_try_advisory_lock(42)",
 	).Scan(&acquired)
 	if err != nil {
@@ -152,13 +160,12 @@ func (n *Node) startHeartbeat(ctx context.Context) {
 
 func (n *Node) refreshLock(ctx context.Context) {
 	var held bool
-	err := n.conn.QueryRowContext(ctx,
+	err := n.heartbeatConn.QueryRowContext(ctx,
 		`SELECT EXISTS(
 			SELECT 1 FROM pg_locks
 			WHERE locktype='advisory'
 			AND objid=42
 			AND granted=true
-			AND pid=pg_backend_pid()
 		)`,
 	).Scan(&held)
 	if err != nil {

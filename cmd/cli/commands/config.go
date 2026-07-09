@@ -63,6 +63,13 @@ var configGetCmd = &cobra.Command{
 	RunE:  runConfigGet,
 }
 
+var configDiffCmd = &cobra.Command{
+	Use:   "diff <v1> <v2>",
+	Short: "Show what changed between two config versions",
+	Args:  cobra.ExactArgs(2),
+	RunE:  runConfigDiff,
+}
+
 func init() {
 	RootCmd.AddCommand(configCmd)
 	configCmd.AddCommand(configSetCmd)
@@ -73,6 +80,7 @@ func init() {
 	configSetCmd.Flags().StringVar(&configPushedBy, "pushed-by", "cli", "actor name")
 	configCmd.AddCommand(configGetCmd)
 	configGetCmd.Flags().StringVar(&configNamespace, "namespace", "default", "namespace")
+	configCmd.AddCommand(configDiffCmd)
 }
 
 func runConfigSet(cmd *cobra.Command, args []string) error {
@@ -165,6 +173,53 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  %s  %s\n", dim.Render("status: "), yellow.Render(result.Status))
 	fmt.Printf("  %s  %s\n", dim.Render("by:     "), dim.Render(result.PushedBy))
 	fmt.Printf("  %s  %s\n", dim.Render("clock:  "), dim.Render(string(clockBytes)))
+	fmt.Println()
+
+	return nil
+}
+
+func runConfigDiff(cmd *cobra.Command, args []string) error {
+	v1 := args[0]
+	v2 := args[1]
+
+	resp, err := httpClient.Get(getURL(fmt.Sprintf("/config/diff?v1=%s&v2=%s", v1, v2)))
+	if err != nil {
+		fmt.Printf("%s could not reach control plane: %s\n", crossMark, err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("%s %s\n", crossMark, string(respBody))
+		return nil
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		fmt.Printf("%s unexpected response: %s\n", crossMark, string(respBody))
+		return err
+	}
+
+	v1Data := result["v1"].(map[string]any)
+	v2Data := result["v2"].(map[string]any)
+
+	oldVal, _ := json.Marshal(v1Data["value"])
+	newVal, _ := json.Marshal(v2Data["value"])
+
+	fmt.Printf("\n%s  %s\n\n",
+		bold.Render("diff"),
+		dim.Render(fmt.Sprintf("%s → %s", v1[:8], v2[:8])),
+	)
+	fmt.Printf("  %s  %s\n", dim.Render("key:      "), cyan.Render(fmt.Sprintf("%v", result["key"])))
+	fmt.Printf("  %s  %s\n", dim.Render("namespace:"), yellow.Render(fmt.Sprintf("%v", result["namespace"])))
+	fmt.Printf("  %s  %s → %s\n",
+		dim.Render("value:    "),
+		red.Render(string(oldVal)),
+		green.Render(string(newVal)),
+	)
+	fmt.Printf("  %s  %s\n", dim.Render("pushed by:"), dim.Render(fmt.Sprintf("%v", result["pushed_by"])))
 	fmt.Println()
 
 	return nil

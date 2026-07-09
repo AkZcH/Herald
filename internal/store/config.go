@@ -88,3 +88,36 @@ func (db *DB) GetLatestConfigVersion(ctx context.Context, key, namespace string)
 
 	return &cv, nil
 }
+
+func (db *DB) GetConfigVersionByID(ctx context.Context, versionID string) (*ConfigVersion, error) {
+	var cv ConfigVersion
+	var previousID sql.NullString
+
+	err := db.QueryRowContext(ctx, `
+		SELECT id, key, namespace, value, previous_id,
+		       vector_clock, status, pushed_by
+		FROM config_versions
+		WHERE id = $1
+	`, versionID).Scan(
+		&cv.ID,
+		&cv.Key,
+		&cv.Namespace,
+		&cv.Value,
+		&previousID,
+		&cv.VectorClock,
+		&cv.Status,
+		&cv.PushedBy,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get config version by id: %w", err)
+	}
+
+	if previousID.Valid {
+		cv.PreviousID = &previousID.String
+	}
+
+	return &cv, nil
+}

@@ -192,3 +192,46 @@ func (s *Server) handleConfigGet(w http.ResponseWriter, r *http.Request) {
 		PushedBy:    cv.PushedBy,
 	})
 }
+
+func (s *Server) handleConfigDiff(w http.ResponseWriter, r *http.Request) {
+	v1ID := r.URL.Query().Get("v1")
+	v2ID := r.URL.Query().Get("v2")
+
+	if v1ID == "" || v2ID == "" {
+		writeError(w, http.StatusBadRequest, "v1 and v2 query params are required")
+		return
+	}
+
+	db := store.NewDBFromSQL(s.db)
+
+	v1, err := db.GetConfigVersionByID(r.Context(), v1ID)
+	if err != nil || v1 == nil {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("version %s not found", v1ID))
+		return
+	}
+
+	v2, err := db.GetConfigVersionByID(r.Context(), v2ID)
+	if err != nil || v2 == nil {
+		writeError(w, http.StatusNotFound, fmt.Sprintf("version %s not found", v2ID))
+		return
+	}
+
+	var oldValue, newValue any
+	json.Unmarshal(v1.Value, &oldValue)
+	json.Unmarshal(v2.Value, &newValue)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"key":       v1.Key,
+		"namespace": v1.Namespace,
+		"v1": map[string]any{
+			"id":    v1.ID,
+			"value": oldValue,
+		},
+		"v2": map[string]any{
+			"id":    v2.ID,
+			"value": newValue,
+		},
+		"pushed_by": v2.PushedBy,
+	})
+}
