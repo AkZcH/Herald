@@ -30,6 +30,15 @@ func TestWriteCommittedAfterQuorum(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	cleanupDB, err := store.NewDB(dbURL)
+	if err != nil {
+		t.Fatalf("cleanup connect: %v", err)
+	}
+	cleanupDB.Exec("SELECT pg_advisory_unlock_all()")
+	cleanupDB.Close()
+
+	time.Sleep(200 * time.Millisecond)
+
 	// spin up 3 nodes each with their own DB connection
 	nodes := make([]*raft.Node, 3)
 	ports := make([]int, 3)

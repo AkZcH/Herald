@@ -17,6 +17,16 @@ func TestExactlyOneLeader(t *testing.T) {
 		t.Skip("HERALD_DB_URL not set")
 	}
 
+	// release any locks held by previous tests
+	cleanupDB, err := store.NewDB(dbURL)
+	if err != nil {
+		t.Fatalf("cleanup connect: %v", err)
+	}
+	cleanupDB.Exec("SELECT pg_advisory_unlock_all()")
+	cleanupDB.Close()
+
+	time.Sleep(200 * time.Millisecond)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
