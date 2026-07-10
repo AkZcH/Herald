@@ -37,6 +37,7 @@ type Node struct {
 	stopCh        chan struct{}
 	leaderID      string
 	peers         []*Peer
+	lockKey       int64
 }
 
 func NewNode(db *sql.DB) *Node {
@@ -45,7 +46,14 @@ func NewNode(db *sql.DB) *Node {
 		db:     db,
 		role:   RoleFollower,
 		stopCh: make(chan struct{}),
+		lockKey: 42,
 	}
+}
+
+func NewNodeWithLockKey(db *sql.DB, lockKey int64) *Node {
+	n := NewNode(db)
+	n.lockKey = lockKey
+	return n
 }
 
 func (n *Node) ID() string {
@@ -116,8 +124,8 @@ func (n *Node) electionLoop(ctx context.Context) {
 func (n *Node) tryAcquireLeadership(ctx context.Context) {
 	var acquired bool
 	err := n.electionConn.QueryRowContext(ctx,
-		"SELECT pg_try_advisory_lock(42)",
-	).Scan(&acquired)
+    "SELECT pg_try_advisory_lock($1)", n.lockKey,
+).Scan(&acquired)
 	if err != nil {
 		log.Error().Err(err).Msg("advisory lock query failed")
 		return
@@ -162,13 +170,13 @@ func (n *Node) startHeartbeat(ctx context.Context) {
 func (n *Node) refreshLock(ctx context.Context) {
 	var held bool
 	err := n.heartbeatConn.QueryRowContext(ctx,
-		`SELECT EXISTS(
-			SELECT 1 FROM pg_locks
-			WHERE locktype='advisory'
-			AND objid=42
-			AND granted=true
-		)`,
-	).Scan(&held)
+    `SELECT EXISTS(
+        SELECT 1 FROM pg_locks
+        WHERE locktype='advisory'
+        AND objid=$1
+        AND granted=true
+    )`, n.lockKey,
+).Scan(&held)
 	if err != nil {
 		log.Error().Err(err).Msg("heartbeat check failed")
 		return

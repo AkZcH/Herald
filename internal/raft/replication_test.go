@@ -57,7 +57,7 @@ func TestWriteCommittedAfterQuorum(t *testing.T) {
 		ports[i] = port
 
 		t.Setenv("HERALD_NODE_ID", fmt.Sprintf("node-%d", i+1))
-		nodes[i] = raft.NewNode(db.DB)
+		nodes[i] = raft.NewNodeWithLockKey(db.DB, 43)
 	}
 
 	// start gRPC servers for all nodes
