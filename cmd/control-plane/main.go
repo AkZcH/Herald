@@ -51,6 +51,19 @@ func main() {
 	raftNode.Start(ctx)
 	log.Info().Msg("raft node started")
 
+	grpcPort := os.Getenv("HERALD_GRPC_PORT")
+if grpcPort == "" {
+    grpcPort = "7800"
+}
+
+go func() {
+    if err := raftNode.StartGRPCServer(grpcPort); err != nil {
+        log.Fatal().Err(err).Msg("gRPC server failed")
+    }
+}()
+
+log.Info().Str("grpc_port", grpcPort).Msg("raft gRPC server started")
+
 	srv := api.NewServer(nodeID, port, db.DB, raftNode)
 
 	quit := make(chan os.Signal, 1)
