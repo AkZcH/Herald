@@ -50,6 +50,13 @@ func (n *Node) connectPeer(peer *Peer) error {
 	return nil
 }
 
+func (n *Node) AddPeer(id, address string) {
+	n.peers = append(n.peers, &Peer{
+		ID:      id,
+		Address: address,
+	})
+}
+
 func (n *Node) BroadcastAppendEntries(ctx context.Context, entry LogEntry) (bool, error) {
 	if len(n.peers) == 0 {
 		return true, nil
