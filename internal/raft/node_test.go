@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -16,6 +18,14 @@ func TestExactlyOneLeader(t *testing.T) {
 	if dbURL == "" {
 		t.Skip("HERALD_DB_URL not set")
 	}
+
+		_, thisFile, _, _ := runtime.Caller(0)
+	migrationsPath := filepath.Join(filepath.Dir(thisFile), "..", "..", "migrations")
+	migrationsPath = filepath.Clean(migrationsPath)
+	if err := store.RunMigrations(dbURL, migrationsPath); err != nil {
+		t.Fatalf("migrations: %v", err)
+	}
+
 
 	// release any locks held by previous tests
 	cleanupDB, err := store.NewDB(dbURL)

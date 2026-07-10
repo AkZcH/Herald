@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -29,6 +31,13 @@ func TestWriteCommittedAfterQuorum(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	_, thisFile, _, _ := runtime.Caller(0)
+	migrationsPath := filepath.Join(filepath.Dir(thisFile), "..", "..", "migrations")
+	migrationsPath = filepath.Clean(migrationsPath)
+	if err := store.RunMigrations(dbURL, migrationsPath); err != nil {
+		t.Fatalf("migrations: %v", err)
+	}
 
 	cleanupDB, err := store.NewDB(dbURL)
 	if err != nil {
