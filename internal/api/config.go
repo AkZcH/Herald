@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/AkZcH/herald/internal/audit"
+	"github.com/AkZcH/herald/internal/raft"
 	"github.com/AkZcH/herald/internal/store"
 	"github.com/AkZcH/herald/internal/vectorclock"
 	"github.com/go-chi/chi/v5"
@@ -118,25 +119,36 @@ func (s *Server) handleConfigWrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-var oldValue []byte
-if prev != nil {
-    oldValue = prev.Value
-}
+	logIndex, err := s.raftNode.AppendToLog(r.Context(), versionID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to append to raft log")
+		return
+	}
 
-if err := s.auditWriter.Write(r.Context(), audit.Entry{
-    EventType:   audit.EventConfigWrite,
-    Key:         req.Key,
-    Namespace:   req.Namespace,
-    OldValue:    oldValue,
-    NewValue:    valueJSON,
-    VersionID:   versionID,
-    VectorClock: clockJSON,
-    Actor:       req.PushedBy,
-    Targeting:   targetingJSON,
-}); err != nil {
-    writeError(w, http.StatusInternalServerError, "failed to write audit log")
-    return
-}
+	entry := raft.LogEntry{
+		Term:            s.raftNode.Term(),
+		Index:           logIndex,
+		ConfigVersionID: versionID,
+		Command:         "CONFIG_WRITE",
+	}
+
+	quorumReached, err := s.raftNode.BroadcastAppendEntries(r.Context(), entry)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to broadcast to peers")
+		return
+	}
+
+	if quorumReached {
+		if err := s.raftNode.CommitVersion(r.Context(), versionID); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to commit version")
+			return
+		}
+	}
+
+	status := "PENDING"
+	if quorumReached {
+		status = "COMMITTED"
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
@@ -144,9 +156,39 @@ if err := s.auditWriter.Write(r.Context(), audit.Entry{
 		VersionID:   versionID,
 		Key:         req.Key,
 		Namespace:   req.Namespace,
-		Status:      "PENDING",
+		Status:      status,
 		VectorClock: vc,
 	})
+
+	var oldValue []byte
+	if prev != nil {
+		oldValue = prev.Value
+	}
+
+	if err := s.auditWriter.Write(r.Context(), audit.Entry{
+		EventType:   audit.EventConfigWrite,
+		Key:         req.Key,
+		Namespace:   req.Namespace,
+		OldValue:    oldValue,
+		NewValue:    valueJSON,
+		VersionID:   versionID,
+		VectorClock: clockJSON,
+		Actor:       req.PushedBy,
+		Targeting:   targetingJSON,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to write audit log")
+		return
+	}
+
+	// w.Header().Set("Content-Type", "application/json")
+	// w.WriteHeader(http.StatusAccepted)
+	// json.NewEncoder(w).Encode(configWriteResponse{
+	// 	VersionID:   versionID,
+	// 	Key:         req.Key,
+	// 	Namespace:   req.Namespace,
+	// 	Status:      "PENDING",
+	// 	VectorClock: vc,
+	// })
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {

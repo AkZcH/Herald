@@ -36,6 +36,7 @@ type Node struct {
 	mu            sync.RWMutex
 	stopCh        chan struct{}
 	leaderID      string
+	peers         []*Peer
 }
 
 func NewNode(db *sql.DB) *Node {

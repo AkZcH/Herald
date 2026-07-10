@@ -111,10 +111,10 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 	respBody, _ := io.ReadAll(resp.Body)
 
 	var result configWriteResponse
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		fmt.Printf("%s unexpected response: %s\n", crossMark, string(respBody))
-		return err
-	}
+if err := json.NewDecoder(bytes.NewReader(respBody)).Decode(&result); err != nil {
+    fmt.Printf("%s unexpected response: %s\n", crossMark, string(respBody))
+    return err
+}
 
 	fmt.Printf("\n%s writing to leader %s\n", bullet, cyan.Render(controlPlaneURL))
 	fmt.Printf("%s committed  key=%s  version=%s\n",

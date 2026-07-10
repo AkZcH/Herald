@@ -48,6 +48,7 @@ func main() {
 	defer cancel()
 
 	raftNode := raft.NewNode(db.DB)
+	raftNode.LoadPeers()
 	raftNode.Start(ctx)
 	log.Info().Msg("raft node started")
 
