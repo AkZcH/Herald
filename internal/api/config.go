@@ -139,11 +139,19 @@ func (s *Server) handleConfigWrite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if quorumReached {
-		if err := s.raftNode.CommitVersion(r.Context(), versionID); err != nil {
-			writeError(w, http.StatusInternalServerError, "failed to commit version")
-			return
-		}
-	}
+    if err := s.raftNode.CommitVersion(r.Context(), versionID); err != nil {
+        writeError(w, http.StatusInternalServerError, "failed to commit version")
+        return
+    }
+
+    pushPayload, _ := json.Marshal(map[string]any{
+        "type":       "config_push",
+        "version_id": versionID,
+        "delta":      map[string]any{req.Key: req.Value},
+        "namespace":  req.Namespace,
+    })
+    s.hub.broadcast(req.Namespace, string(pushPayload))
+}
 
 	status := "PENDING"
 	if quorumReached {

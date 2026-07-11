@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -17,6 +16,11 @@ type agentRegisterRequest struct {
 }
 
 type heartbeatRequest struct {
+	AgentID   string `json:"agent_id"`
+	VersionID string `json:"version_id"`
+}
+
+type ackRequest struct {
 	AgentID   string `json:"agent_id"`
 	VersionID string `json:"version_id"`
 }
@@ -115,17 +119,49 @@ func (s *Server) handleAgentSSE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	flusher, ok := w.(http.Flusher)
+	_, ok := w.(http.Flusher)
 	if !ok {
 		writeError(w, http.StatusInternalServerError, "streaming not supported")
 		return
 	}
 
+	client := s.hub.register(agentID, namespace)
+	defer s.hub.unregister(agentID)
+
 	log.Info().Str("agent_id", agentID).Str("namespace", namespace).Msg("agent SSE connected")
 
-	fmt.Fprintf(w, "data: {\"type\":\"connected\",\"agent_id\":\"%s\"}\n\n", agentID)
-	flusher.Flush()
+	connected, _ := json.Marshal(map[string]string{
+		"type":     "connected",
+		"agent_id": agentID,
+	})
+	client.send <- string(connected)
 
-	<-r.Context().Done()
+	s.hub.serveSSE(client, w, r)
+
 	log.Info().Str("agent_id", agentID).Msg("agent SSE disconnected")
+}
+
+func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {
+	var req ackRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	_, err := s.db.ExecContext(r.Context(), `
+		INSERT INTO ack_states (version_id, agent_id, acked_at, status)
+		VALUES ($1, $2, $3, 'ACKED')
+		ON CONFLICT (version_id, agent_id) DO NOTHING
+	`, req.VersionID, req.AgentID, time.Now().UTC())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to record ack")
+		return
+	}
+
+	log.Info().
+		Str("agent_id", req.AgentID).
+		Str("version_id", req.VersionID).
+		Msg("ack received")
+
+	w.WriteHeader(http.StatusOK)
 }

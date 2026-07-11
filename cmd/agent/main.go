@@ -227,7 +227,27 @@ func applyConfigPush(cfg agentConfig, cache *configCache, event map[string]any) 
 
 	if versionID != "" {
 		cache.setLastVersionID(versionID)
+		sendAck(cfg, versionID)
 	}
+}
+
+func sendAck(cfg agentConfig, versionID string) {
+	body, _ := json.Marshal(map[string]string{
+		"agent_id":   cfg.agentID,
+		"version_id": versionID,
+	})
+
+	resp, err := http.Post(
+		fmt.Sprintf("%s/ack", cfg.controlPlaneURL),
+		"application/json",
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		log.Warn().Err(err).Msg("ack failed")
+		return
+	}
+	defer resp.Body.Close()
+	log.Info().Str("version_id", versionID).Msg("ack sent")
 }
 
 func main() {

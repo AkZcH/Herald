@@ -15,13 +15,14 @@ import (
 )
 
 type Server struct {
-	router   *chi.Mux
-	http     *http.Server
-	nodeID   string
-	port     string
-	db       *sql.DB
-	raftNode *raft.Node
+	router      *chi.Mux
+	http        *http.Server
+	nodeID      string
+	port        string
+	db          *sql.DB
+	raftNode    *raft.Node
 	auditWriter *audit.Writer
+	hub         *Hub
 }
 
 func NewServer(nodeID, port string, db *sql.DB, raftNode *raft.Node) *Server {
@@ -31,6 +32,7 @@ func NewServer(nodeID, port string, db *sql.DB, raftNode *raft.Node) *Server {
 		db:       db,
 		raftNode: raftNode,
 		auditWriter: audit.NewWriter(db),
+		hub: newHub(),
 	}
 	s.router = chi.NewRouter()
 	s.setupMiddleware()
@@ -61,6 +63,7 @@ func (s *Server) setupRoutes() {
 	s.router.Post("/agents/register", s.handleAgentRegister)
 	s.router.Post("/heartbeat", s.handleHeartbeat)
 	s.router.Get("/agents/stream", s.handleAgentSSE)
+	s.router.Post("/ack", s.handleAck)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
