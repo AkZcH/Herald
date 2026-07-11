@@ -58,6 +58,7 @@ func (s *Server) setupRoutes() {
 	s.router.Post("/config", s.handleConfigWrite)
 	s.router.Get("/config/{key}", s.handleConfigGet)
 	s.router.Get("/config/diff", s.handleConfigDiff)
+	s.router.Post("/agents/register", s.handleAgentRegister)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
