@@ -250,6 +250,50 @@ func sendAck(cfg agentConfig, versionID string) {
 	log.Info().Str("version_id", versionID).Msg("ack sent")
 }
 
+func startLocalServer(cfg agentConfig, cache *configCache) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/config/", func(w http.ResponseWriter, r *http.Request) {
+		key := strings.TrimPrefix(r.URL.Path, "/config/")
+		if key == "" {
+			http.Error(w, `{"error":"key is required"}`, http.StatusBadRequest)
+			return
+		}
+
+		value, ok := cache.get(key)
+		if !ok {
+			http.Error(w,
+				fmt.Sprintf(`{"error":"key %q not found in local cache"}`, key),
+				http.StatusNotFound,
+			)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"key":        key,
+			"value":      value,
+			"version_id": cache.getLastVersionID(),
+			"source":     "local_cache",
+		})
+	})
+
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":   "ok",
+			"agent_id": cfg.agentID,
+		})
+	})
+
+	addr := fmt.Sprintf(":%s", cfg.port)
+	log.Info().Str("port", cfg.port).Msg("agent local server starting")
+
+	if err := http.ListenAndServe(addr, mux); err != nil {
+		log.Fatal().Err(err).Msg("local server failed")
+	}
+}
+
 func main() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	cfg := loadConfig()
@@ -269,6 +313,7 @@ func main() {
 	cache := &configCache{}
 
 	go connectSSE(cfg, cache)
+	go startLocalServer(cfg, cache)
 
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
