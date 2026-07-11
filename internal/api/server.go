@@ -60,6 +60,7 @@ func (s *Server) setupRoutes() {
 	s.router.Get("/config/diff", s.handleConfigDiff)
 	s.router.Post("/agents/register", s.handleAgentRegister)
 	s.router.Post("/heartbeat", s.handleHeartbeat)
+	s.router.Get("/agents/stream", s.handleAgentSSE)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

@@ -1,16 +1,45 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
+
+type configCache struct {
+	data            sync.Map
+	lastVersionID   string
+	mu              sync.RWMutex
+}
+
+func (c *configCache) set(key string, value any) {
+	c.data.Store(key, value)
+}
+
+func (c *configCache) get(key string) (any, bool) {
+	return c.data.Load(key)
+}
+
+func (c *configCache) setLastVersionID(id string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.lastVersionID = id
+}
+
+func (c *configCache) getLastVersionID() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.lastVersionID
+}
 
 type agentConfig struct {
 	agentID        string
@@ -134,6 +163,73 @@ func sendHeartbeat(cfg agentConfig, lastVersionID string) {
 	defer resp.Body.Close()
 }
 
+func connectSSE(cfg agentConfig, cache *configCache) {
+	url := fmt.Sprintf("%s/agents/stream?agent_id=%s&namespace=%s",
+		cfg.controlPlaneURL, cfg.agentID, cfg.namespace)
+
+	for {
+		resp, err := http.Get(url)
+		if err != nil {
+			log.Warn().Err(err).Msg("SSE connection failed, retrying in 2s")
+			time.Sleep(2 * time.Second)
+			continue
+		}
+
+		log.Info().Msg("SSE connected to control plane")
+
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+
+			data := strings.TrimPrefix(line, "data: ")
+
+			var event map[string]any
+			if err := json.Unmarshal([]byte(data), &event); err != nil {
+				continue
+			}
+
+			eventType, _ := event["type"].(string)
+
+			switch eventType {
+			case "connected":
+				log.Info().Msg("SSE handshake complete")
+			case "config_push":
+				applyConfigPush(cfg, cache, event)
+			}
+		}
+
+		resp.Body.Close()
+		log.Warn().Msg("SSE connection dropped, reconnecting in 2s")
+		time.Sleep(2 * time.Second)
+	}
+}
+
+func applyConfigPush(cfg agentConfig, cache *configCache, event map[string]any) {
+	versionID, _ := event["version_id"].(string)
+
+	if versionID != "" && versionID == cache.getLastVersionID() {
+		log.Debug().Str("version_id", versionID).Msg("duplicate push ignored")
+		return
+	}
+
+	delta, ok := event["delta"].(map[string]any)
+	if !ok {
+		return
+	}
+
+	for key, value := range delta {
+		cache.set(key, value)
+		log.Info().Str("key", key).Any("value", value).Msg("config applied")
+	}
+
+	if versionID != "" {
+		cache.setLastVersionID(versionID)
+	}
+}
+
 func main() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	cfg := loadConfig()
@@ -150,10 +246,14 @@ func main() {
 		break
 	}
 
+	cache := &configCache{}
+
+	go connectSSE(cfg, cache)
+
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		sendHeartbeat(cfg, "")
+		sendHeartbeat(cfg, cache.getLastVersionID())
 	}
 }

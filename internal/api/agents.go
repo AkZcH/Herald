@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -101,4 +102,30 @@ func (s *Server) StartStaleDetector(ctx context.Context) {
 			}
 		}
 	}
+}
+
+func (s *Server) handleAgentSSE(w http.ResponseWriter, r *http.Request) {
+	agentID := r.URL.Query().Get("agent_id")
+	namespace := r.URL.Query().Get("namespace")
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming not supported")
+		return
+	}
+
+	log.Info().Str("agent_id", agentID).Str("namespace", namespace).Msg("agent SSE connected")
+
+	fmt.Fprintf(w, "data: {\"type\":\"connected\",\"agent_id\":\"%s\"}\n\n", agentID)
+	flusher.Flush()
+
+	<-r.Context().Done()
+	log.Info().Str("agent_id", agentID).Msg("agent SSE disconnected")
 }
