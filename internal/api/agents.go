@@ -1,15 +1,23 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 type agentRegisterRequest struct {
 	AgentID   string            `json:"agent_id"`
 	Namespace string            `json:"namespace"`
 	Labels    map[string]string `json:"labels"`
+}
+
+type heartbeatRequest struct {
+	AgentID   string `json:"agent_id"`
+	VersionID string `json:"version_id"`
 }
 
 func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request) {
@@ -46,4 +54,51 @@ func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request) {
 		"status":   "registered",
 		"agent_id": req.AgentID,
 	})
+}
+
+func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
+	var req heartbeatRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.AgentID == "" {
+		writeError(w, http.StatusBadRequest, "agent_id is required")
+		return
+	}
+
+	_, err := s.db.ExecContext(r.Context(), `
+		UPDATE agent_registry
+		SET last_seen = $1, status = 'HEALTHY'
+		WHERE agent_id = $2
+	`, time.Now().UTC(), req.AgentID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to update heartbeat")
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) StartStaleDetector(ctx context.Context) {
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			_, err := s.db.ExecContext(ctx, `
+				UPDATE agent_registry
+				SET status = 'STALE'
+				WHERE status = 'HEALTHY'
+				AND last_seen < $1
+			`, time.Now().UTC().Add(-1500*time.Millisecond))
+			if err != nil {
+				log.Error().Err(err).Msg("stale detection failed")
+			}
+		}
+	}
 }

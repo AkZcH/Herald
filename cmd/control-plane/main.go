@@ -66,6 +66,7 @@ go func() {
 log.Info().Str("grpc_port", grpcPort).Msg("raft gRPC server started")
 
 	srv := api.NewServer(nodeID, port, db.DB, raftNode)
+	go srv.StartStaleDetector(ctx)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)

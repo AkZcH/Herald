@@ -116,6 +116,24 @@ func register(cfg agentConfig) error {
 	return nil
 }
 
+func sendHeartbeat(cfg agentConfig, lastVersionID string) {
+	body, _ := json.Marshal(map[string]any{
+		"agent_id":   cfg.agentID,
+		"version_id": lastVersionID,
+	})
+
+	resp, err := http.Post(
+		fmt.Sprintf("%s/heartbeat", cfg.controlPlaneURL),
+		"application/json",
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		log.Warn().Err(err).Msg("heartbeat failed")
+		return
+	}
+	defer resp.Body.Close()
+}
+
 func main() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 	cfg := loadConfig()
@@ -130,5 +148,12 @@ func main() {
 			continue
 		}
 		break
+	}
+
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		sendHeartbeat(cfg, "")
 	}
 }
