@@ -7,11 +7,17 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	_ "github.com/lib/pq"
 )
 
+var migrationMu sync.Mutex
+
 func RunMigrations(dbURL string, migrationsPath string) error {
+	migrationMu.Lock()
+	defer migrationMu.Unlock()
+
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		return fmt.Errorf("open: %w", err)
@@ -21,6 +27,13 @@ func RunMigrations(dbURL string, migrationsPath string) error {
 	if err := db.Ping(); err != nil {
 		return fmt.Errorf("ping: %w", err)
 	}
+
+		// use advisory lock to serialize concurrent migration runs
+	_, err = db.Exec("SELECT pg_advisory_lock(999)")
+	if err != nil {
+		return fmt.Errorf("advisory lock: %w", err)
+	}
+	defer db.Exec("SELECT pg_advisory_unlock(999)")
 
 	_, err = db.Exec(`
 		CREATE TABLE IF NOT EXISTS schema_migrations (
