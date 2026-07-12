@@ -17,12 +17,19 @@ type sseClient struct {
 type Hub struct {
 	mu      sync.RWMutex
 	clients map[string]*sseClient
+	watchers []*watcher
 }
 
 func newHub() *Hub {
 	return &Hub{
 		clients: make(map[string]*sseClient),
 	}
+}
+
+type watcher struct {
+	key       string
+	namespace string
+	send      chan string
 }
 
 func (h *Hub) register(agentID, namespace string) *sseClient {
@@ -69,6 +76,45 @@ func (h *Hub) serveSSE(client *sseClient, w http.ResponseWriter, r *http.Request
 			flusher.Flush()
 		case <-r.Context().Done():
 			return
+		}
+	}
+}
+
+func (h *Hub) addWatcher(key, namespace string) *watcher {
+	w := &watcher{
+		key:       key,
+		namespace: namespace,
+		send:      make(chan string, 16),
+	}
+	h.mu.Lock()
+	if h.watchers == nil {
+		h.watchers = make([]*watcher, 0)
+	}
+	h.watchers = append(h.watchers, w)
+	h.mu.Unlock()
+	return w
+}
+
+func (h *Hub) removeWatcher(w *watcher) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for i, ww := range h.watchers {
+		if ww == w {
+			h.watchers = append(h.watchers[:i], h.watchers[i+1:]...)
+			return
+		}
+	}
+}
+
+func (h *Hub) notifyWatchers(key, namespace, payload string) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, w := range h.watchers {
+		if w.key == key && w.namespace == namespace {
+			select {
+			case w.send <- payload:
+			default:
+			}
 		}
 	}
 }

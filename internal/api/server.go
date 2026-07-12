@@ -64,6 +64,7 @@ func (s *Server) setupRoutes() {
 	s.router.Post("/heartbeat", s.handleHeartbeat)
 	s.router.Get("/agents/stream", s.handleAgentSSE)
 	s.router.Post("/ack", s.handleAck)
+	s.router.Get("/config/{key}/watch", s.handleConfigWatch)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

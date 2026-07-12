@@ -285,3 +285,37 @@ func (s *Server) handleConfigDiff(w http.ResponseWriter, r *http.Request) {
 		"pushed_by": v2.PushedBy,
 	})
 }
+
+func (s *Server) handleConfigWatch(w http.ResponseWriter, r *http.Request) {
+	key := chi.URLParam(r, "key")
+	namespace := r.URL.Query().Get("namespace")
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "streaming not supported")
+		return
+	}
+
+	watcher := s.hub.addWatcher(key, namespace)
+	defer s.hub.removeWatcher(watcher)
+
+	fmt.Fprintf(w, "data: {\"type\":\"watching\",\"key\":\"%s\",\"namespace\":\"%s\"}\n\n", key, namespace)
+	flusher.Flush()
+
+	for {
+		select {
+		case msg := <-watcher.send:
+			fmt.Fprintf(w, "data: %s\n\n", msg)
+			flusher.Flush()
+		case <-r.Context().Done():
+			return
+		}
+	}
+}
