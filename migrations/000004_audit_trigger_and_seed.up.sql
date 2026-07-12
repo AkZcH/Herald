@@ -23,10 +23,10 @@ INSERT INTO config_versions (
     '{}',
     'COMMITTED',
     'system'
-);
+) ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO raft_log (
     term, log_index, node_id, config_version_id, command
 ) VALUES (
     0, 0, 'system', '00000000-0000-0000-0000-000000000000', 'INIT'
-);
+) ON CONFLICT (log_index) DO NOTHING;
