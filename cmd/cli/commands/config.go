@@ -1,11 +1,13 @@
 package commands
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -70,6 +72,13 @@ var configDiffCmd = &cobra.Command{
 	RunE:  runConfigDiff,
 }
 
+var configWatchCmd = &cobra.Command{
+	Use:   "watch <key>",
+	Short: "Stream live value changes for a config key",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runConfigWatch,
+}
+
 func init() {
 	RootCmd.AddCommand(configCmd)
 	configCmd.AddCommand(configSetCmd)
@@ -81,6 +90,8 @@ func init() {
 	configCmd.AddCommand(configGetCmd)
 	configGetCmd.Flags().StringVar(&configNamespace, "namespace", "default", "namespace")
 	configCmd.AddCommand(configDiffCmd)
+	configCmd.AddCommand(configWatchCmd)
+	configWatchCmd.Flags().StringVar(&configNamespace, "namespace", "default", "namespace")
 }
 
 func runConfigSet(cmd *cobra.Command, args []string) error {
@@ -221,6 +232,57 @@ func runConfigDiff(cmd *cobra.Command, args []string) error {
 	)
 	fmt.Printf("  %s  %s\n", dim.Render("pushed by:"), dim.Render(fmt.Sprintf("%v", result["pushed_by"])))
 	fmt.Println()
+
+	return nil
+}
+
+func runConfigWatch(cmd *cobra.Command, args []string) error {
+	key := args[0]
+
+	url := getURL(fmt.Sprintf("/config/%s/watch?namespace=%s", key, configNamespace))
+
+	fmt.Printf("\n%s  %s\n\n",
+		bold.Render(fmt.Sprintf("watching %s", cyan.Render(key))),
+		dim.Render(fmt.Sprintf("(%s)", configNamespace)),
+	)
+
+	resp, err := httpClient.Get(url)
+	if err != nil {
+		fmt.Printf("%s could not connect: %s\n", crossMark, err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+
+		data := strings.TrimPrefix(line, "data: ")
+
+		var event map[string]any
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			continue
+		}
+
+		eventType, _ := event["type"].(string)
+		switch eventType {
+		case "watching":
+			fmt.Printf("%s connected, waiting for changes...\n", checkMark)
+		case "config_push":
+			versionID, _ := event["version_id"].(string)
+			delta, _ := event["delta"].(map[string]any)
+			value := delta[key]
+			valueBytes, _ := json.Marshal(value)
+			fmt.Printf("%s  %s  version=%s\n",
+				green.Render("→"),
+				bold.Render(string(valueBytes)),
+				dim.Render(versionID[:8]),
+			)
+		}
+	}
 
 	return nil
 }

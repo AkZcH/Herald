@@ -151,6 +151,7 @@ func (s *Server) handleConfigWrite(w http.ResponseWriter, r *http.Request) {
         "namespace":  req.Namespace,
     })
     s.hub.broadcast(req.Namespace, string(pushPayload))
+	s.hub.notifyWatchers(req.Key, req.Namespace, string(pushPayload))
 }
 
 	status := "PENDING"
