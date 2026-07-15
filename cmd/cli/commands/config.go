@@ -13,11 +13,19 @@ import (
 )
 
 var (
-	configNamespace string
-	configTarget    string
-	configTTL       string
-	configPushedBy  string
+	configNamespace   string
+	configTarget      string
+	configTTL         string
+	configPushedBy    string
+	rollbackToVersion string
 )
+
+// var (
+// 	configNamespace string
+// 	configTarget    string
+// 	configTTL       string
+// 	configPushedBy  string
+// )
 
 type configWriteRequest struct {
 	Key             string            `json:"key"`
@@ -79,6 +87,13 @@ var configWatchCmd = &cobra.Command{
 	RunE:  runConfigWatch,
 }
 
+var configRollbackCmd = &cobra.Command{
+	Use:   "rollback <key> --to <version-id> --namespace <ns>",
+	Short: "Roll back a config key to a previous version",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runConfigRollback,
+}
+
 func init() {
 	RootCmd.AddCommand(configCmd)
 	configCmd.AddCommand(configSetCmd)
@@ -92,6 +107,12 @@ func init() {
 	configCmd.AddCommand(configDiffCmd)
 	configCmd.AddCommand(configWatchCmd)
 	configWatchCmd.Flags().StringVar(&configNamespace, "namespace", "default", "namespace")
+	// var rollbackToVersion string
+	configCmd.AddCommand(configRollbackCmd)
+	configRollbackCmd.Flags().StringVar(&configNamespace, "namespace", "default", "namespace")
+	configRollbackCmd.Flags().StringVar(&rollbackToVersion, "to", "", "version ID to roll back to")
+	configRollbackCmd.Flags().StringVar(&configPushedBy, "pushed-by", "cli", "actor name")
+	configRollbackCmd.MarkFlagRequired("to")
 }
 
 func runConfigSet(cmd *cobra.Command, args []string) error {
@@ -283,6 +304,61 @@ func runConfigWatch(cmd *cobra.Command, args []string) error {
 			)
 		}
 	}
+
+	return nil
+}
+
+func runConfigRollback(cmd *cobra.Command, args []string) error {
+	body, _ := json.Marshal(map[string]string{
+		"version_id": rollbackToVersion,
+		"namespace":  configNamespace,
+		"actor":      configPushedBy,
+	})
+
+	resp, err := httpClient.Post(
+		getURL("/config/rollback"),
+		"application/json",
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		fmt.Printf("%s could not reach control plane: %s\n", crossMark, err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode == http.StatusNotFound {
+		fmt.Printf("%s version %s not found\n", crossMark, cyan.Render(rollbackToVersion))
+		return nil
+	}
+	if resp.StatusCode == http.StatusConflict {
+		fmt.Printf("%s rollback already in progress\n", crossMark)
+		return nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("%s rollback failed: %s\n", crossMark, string(respBody))
+		return nil
+	}
+
+	var result map[string]string
+	json.NewDecoder(bytes.NewReader(respBody)).Decode(&result)
+
+	fmt.Printf("\n%s rollback requested: %s  %s → %s\n",
+		yellow.Render("!"),
+		cyan.Render(result["key"]),
+		dim.Render("v"+rollbackToVersion[:8]),
+		dim.Render("v"+result["version_id"][:8]),
+	)
+	fmt.Printf("%s fsm transition: %s\n",
+		bullet,
+		dim.Render("ACTIVE → ROLLBACK_PENDING → COMMITTING → ACTIVE"),
+	)
+	fmt.Printf("%s rollback committed  version=%s\n",
+		checkMark,
+		dim.Render(result["version_id"]),
+	)
+	fmt.Println()
 
 	return nil
 }
