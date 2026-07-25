@@ -55,12 +55,21 @@ func (h *Hub) unregister(agentID string) {
 	h.index.Remove(agentID)
 }
 
-func (h *Hub) broadcast(namespace string, payload string) {
+func (h *Hub) broadcastTargeted(namespace string, payload string, sel targeting.Selector) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
+	matchedAgents := h.index.Match(namespace, sel)
+	matched := make(map[string]bool, len(matchedAgents))
+	for _, id := range matchedAgents {
+		matched[id] = true
+	}
+
 	for _, client := range h.clients {
 		if client.namespace != namespace {
+			continue
+		}
+		if !sel.IsEmpty() && !matched[client.agentID] {
 			continue
 		}
 		select {

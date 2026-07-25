@@ -9,6 +9,7 @@ import (
 	"github.com/AkZcH/herald/internal/fsm"
 	"github.com/AkZcH/herald/internal/raft"
 	"github.com/AkZcH/herald/internal/store"
+	"github.com/AkZcH/herald/internal/targeting"
 	"github.com/rs/zerolog/log"
 )
 
@@ -125,7 +126,7 @@ func (s *Server) handleRollback(w http.ResponseWriter, r *http.Request) {
 		"delta":      map[string]any{target.Key: value},
 		"namespace":  req.Namespace,
 	})
-	s.hub.broadcast(req.Namespace, string(pushPayload))
+	s.hub.broadcastTargeted(req.Namespace, string(pushPayload), targeting.Selector{})
 	s.hub.notifyWatchers(target.Key, req.Namespace, string(pushPayload))
 
 	s.auditWriter.Write(r.Context(), audit.Entry{

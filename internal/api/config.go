@@ -9,6 +9,7 @@ import (
 	"github.com/AkZcH/herald/internal/audit"
 	"github.com/AkZcH/herald/internal/raft"
 	"github.com/AkZcH/herald/internal/store"
+	"github.com/AkZcH/herald/internal/targeting"
 	"github.com/AkZcH/herald/internal/vectorclock"
 	"github.com/go-chi/chi/v5"
 )
@@ -144,14 +145,23 @@ func (s *Server) handleConfigWrite(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+	var sel targeting.Selector
+if req.TargetingLabels != nil {
+    parts := make([]string, 0, len(req.TargetingLabels))
+    for k, v := range req.TargetingLabels {
+        parts = append(parts, fmt.Sprintf("%s=%s", k, v))
+    }
+    sel, _ = targeting.Parse(strings.Join(parts, ","))
+}
+
     pushPayload, _ := json.Marshal(map[string]any{
-        "type":       "config_push",
-        "version_id": versionID,
-        "delta":      map[string]any{req.Key: req.Value},
-        "namespace":  req.Namespace,
-    })
-    s.hub.broadcast(req.Namespace, string(pushPayload))
-	s.hub.notifyWatchers(req.Key, req.Namespace, string(pushPayload))
+    "type":       "config_push",
+    "version_id": versionID,
+    "delta":      map[string]any{req.Key: req.Value},
+    "namespace":  req.Namespace,
+})
+s.hub.broadcastTargeted(req.Namespace, string(pushPayload), sel)
+s.hub.notifyWatchers(req.Key, req.Namespace, string(pushPayload))
 }
 
 	status := "PENDING"
@@ -188,16 +198,6 @@ func (s *Server) handleConfigWrite(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to write audit log")
 		return
 	}
-
-	// w.Header().Set("Content-Type", "application/json")
-	// w.WriteHeader(http.StatusAccepted)
-	// json.NewEncoder(w).Encode(configWriteResponse{
-	// 	VersionID:   versionID,
-	// 	Key:         req.Key,
-	// 	Namespace:   req.Namespace,
-	// 	Status:      "PENDING",
-	// 	VectorClock: vc,
-	// })
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {

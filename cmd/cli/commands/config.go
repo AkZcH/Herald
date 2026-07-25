@@ -124,12 +124,25 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		value = rawValue
 	}
 
+	var targetingLabels map[string]string
+	if configTarget != "" {
+		targetingLabels = make(map[string]string)
+		for _, part := range strings.Split(configTarget, ",") {
+			part = strings.TrimSpace(part)
+			idx := strings.Index(part, "=")
+			if idx != -1 {
+				targetingLabels[part[:idx]] = part[idx+1:]
+			}
+		}
+	}
+
 	req := configWriteRequest{
-		Key:       key,
-		Value:     value,
-		Namespace: configNamespace,
-		TTL:       configTTL,
-		PushedBy:  configPushedBy,
+		Key:             key,
+		Value:           value,
+		Namespace:       configNamespace,
+		TTL:             configTTL,
+		PushedBy:        configPushedBy,
+		TargetingLabels: targetingLabels,
 	}
 
 	body, _ := json.Marshal(req)
