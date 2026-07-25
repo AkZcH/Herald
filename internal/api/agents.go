@@ -111,8 +111,15 @@ func (s *Server) StartStaleDetector(ctx context.Context) {
 func (s *Server) handleAgentSSE(w http.ResponseWriter, r *http.Request) {
 	agentID := r.URL.Query().Get("agent_id")
 	namespace := r.URL.Query().Get("namespace")
+	labelsRaw := r.URL.Query().Get("labels")
+
 	if namespace == "" {
 		namespace = "default"
+	}
+
+	var labels map[string]string
+	if labelsRaw != "" {
+		json.Unmarshal([]byte(labelsRaw), &labels)
 	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -125,7 +132,7 @@ func (s *Server) handleAgentSSE(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := s.hub.register(agentID, namespace)
+	client := s.hub.register(agentID, namespace, labels)
 	defer s.hub.unregister(agentID)
 
 	log.Info().Str("agent_id", agentID).Str("namespace", namespace).Msg("agent SSE connected")

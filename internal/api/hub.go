@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/AkZcH/herald/internal/targeting"
 	"github.com/rs/zerolog/log"
 )
 
@@ -18,11 +19,13 @@ type Hub struct {
 	mu      sync.RWMutex
 	clients map[string]*sseClient
 	watchers []*watcher
+	index    *targeting.Index
 }
 
 func newHub() *Hub {
 	return &Hub{
 		clients: make(map[string]*sseClient),
+				index:   targeting.NewIndex(),
 	}
 }
 
@@ -32,7 +35,7 @@ type watcher struct {
 	send      chan string
 }
 
-func (h *Hub) register(agentID, namespace string) *sseClient {
+func (h *Hub) register(agentID, namespace string, labels map[string]string) *sseClient {
 	client := &sseClient{
 		agentID:   agentID,
 		namespace: namespace,
@@ -41,6 +44,7 @@ func (h *Hub) register(agentID, namespace string) *sseClient {
 	h.mu.Lock()
 	h.clients[agentID] = client
 	h.mu.Unlock()
+	h.index.Upsert(agentID, namespace, labels)
 	return client
 }
 
@@ -48,6 +52,7 @@ func (h *Hub) unregister(agentID string) {
 	h.mu.Lock()
 	delete(h.clients, agentID)
 	h.mu.Unlock()
+	h.index.Remove(agentID)
 }
 
 func (h *Hub) broadcast(namespace string, payload string) {

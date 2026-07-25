@@ -164,8 +164,9 @@ func sendHeartbeat(cfg agentConfig, lastVersionID string) {
 }
 
 func connectSSE(cfg agentConfig, cache *configCache) {
+	labelsJSON, _ := json.Marshal(cfg.labels)
 	url := fmt.Sprintf("%s/agents/stream?agent_id=%s&namespace=%s",
-		cfg.controlPlaneURL, cfg.agentID, cfg.namespace)
+		cfg.controlPlaneURL, cfg.agentID, cfg.namespace, labelsJSON)
 
 	for {
 		resp, err := http.Get(url)
