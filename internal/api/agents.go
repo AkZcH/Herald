@@ -75,9 +75,11 @@ func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 
 	_, err := s.db.ExecContext(r.Context(), `
 		UPDATE agent_registry
-		SET last_seen = $1, status = 'HEALTHY'
+		SET last_seen = $1,
+		    status = 'HEALTHY',
+		    version_id = COALESCE(NULLIF($3, '')::uuid, version_id)
 		WHERE agent_id = $2
-	`, time.Now().UTC(), req.AgentID)
+	`, time.Now().UTC(), req.AgentID, req.VersionID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update heartbeat")
 		return
