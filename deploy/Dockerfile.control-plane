@@ -7,4 +7,6 @@ RUN go build -o /herald-control-plane ./cmd/control-plane
 
 FROM alpine:3.19
 COPY --from=builder /herald-control-plane /usr/local/bin/herald-control-plane
+COPY --from=builder /app/migrations /migrations
+ENV HERALD_MIGRATIONS_PATH=/migrations
 ENTRYPOINT ["herald-control-plane"]

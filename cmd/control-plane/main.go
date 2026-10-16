@@ -44,6 +44,15 @@ func main() {
 
 	log.Info().Msg("database connected")
 
+	migrationsPath := os.Getenv("HERALD_MIGRATIONS_PATH")
+	if migrationsPath == "" {
+		migrationsPath = "migrations"
+	}
+	if err := store.RunMigrations(dbURL, migrationsPath); err != nil {
+		log.Fatal().Err(err).Str("path", migrationsPath).Msg("failed to run migrations")
+	}
+	log.Info().Msg("migrations up to date")
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
