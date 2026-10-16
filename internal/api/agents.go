@@ -106,6 +106,15 @@ func (s *Server) StartStaleDetector(ctx context.Context) {
 			if err != nil {
 				log.Error().Err(err).Msg("stale detection failed")
 			}
+			_, err = s.db.ExecContext(ctx, `
+				UPDATE agent_registry
+				SET status = 'DEAD'
+				WHERE status IN ('HEALTHY', 'STALE')
+				AND last_seen < $1
+			`, time.Now().UTC().Add(-5*time.Second))
+			if err != nil {
+				log.Error().Err(err).Msg("dead detection failed")
+			}
 		}
 	}
 }
