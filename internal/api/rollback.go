@@ -52,6 +52,16 @@ func (s *Server) handleRollback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var oldValue json.RawMessage
+	current, err := db.GetLatestConfigVersion(r.Context(), target.Key, req.Namespace)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to fetch current version")
+		return
+	}
+	if current != nil {
+		oldValue = current.Value
+	}
+
 	f := fsm.New()
 
 	if err := f.Transition(fsm.StateRollbackPending); err != nil {
@@ -133,7 +143,7 @@ func (s *Server) handleRollback(w http.ResponseWriter, r *http.Request) {
 		EventType:   audit.EventRollback,
 		Key:         target.Key,
 		Namespace:   req.Namespace,
-		OldValue:    nil,
+		OldValue:    oldValue,
 		NewValue:    target.Value,
 		VersionID:   newVersionID,
 		VectorClock: target.VectorClock,
