@@ -95,7 +95,6 @@ func renderAgents(w io.Writer, agents []agentRow, now time.Time) {
 		})
 	}
 
-	// column widths come from the plain text so ANSI colour codes never skew alignment
 	widths := make([]int, len(headers))
 	for i, h := range headers {
 		widths[i] = len(h)

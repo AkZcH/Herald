@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:16
@@ -31,7 +29,8 @@ services:
       HERALD_NODE_ID: node-1
       HERALD_PORT: "7700"
       HERALD_DB_URL: postgres://herald:herald@postgres:5432/herald?sslmode=disable
-      HERALD_PEERS: "node-2=http://control-plane-2:7701,node-3=http://control-plane-3:7702"
+      HERALD_GRPC_PORT: "7800"
+      HERALD_PEERS: "node-2=control-plane-2:7800,node-3=control-plane-3:7800"
     ports:
       - "7700:7700"
     depends_on:
@@ -48,7 +47,8 @@ services:
       HERALD_NODE_ID: node-2
       HERALD_PORT: "7701"
       HERALD_DB_URL: postgres://herald:herald@postgres:5432/herald?sslmode=disable
-      HERALD_PEERS: "node-1=http://control-plane-1:7700,node-3=http://control-plane-3:7702"
+      HERALD_GRPC_PORT: "7800"
+      HERALD_PEERS: "node-1=control-plane-1:7800,node-3=control-plane-3:7800"
     ports:
       - "7701:7701"
     depends_on:
@@ -65,7 +65,8 @@ services:
       HERALD_NODE_ID: node-3
       HERALD_PORT: "7702"
       HERALD_DB_URL: postgres://herald:herald@postgres:5432/herald?sslmode=disable
-      HERALD_PEERS: "node-1=http://control-plane-1:7700,node-2=http://control-plane-2:7701"
+      HERALD_GRPC_PORT: "7800"
+      HERALD_PEERS: "node-1=control-plane-1:7800,node-2=control-plane-2:7800"
     ports:
       - "7702:7702"
     depends_on:

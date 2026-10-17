@@ -1,0 +1,7 @@
+.git
+.github
+*.tar.gz
+*.md
+bin
+benchmarks
+sdk

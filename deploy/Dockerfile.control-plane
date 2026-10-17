@@ -1,9 +1,9 @@
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN go build -o /herald-control-plane ./cmd/control-plane
+RUN CGO_ENABLED=0 go build -o /herald-control-plane ./cmd/control-plane
 
 FROM alpine:3.19
 COPY --from=builder /herald-control-plane /usr/local/bin/herald-control-plane
