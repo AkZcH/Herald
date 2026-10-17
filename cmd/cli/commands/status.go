@@ -135,8 +135,13 @@ func renderAgents(w io.Writer, agents []agentRow, now time.Time) {
 		fmt.Fprintf(w, "  %s\n", strings.TrimRight(line.String(), " "))
 	}
 
-	fmt.Fprintf(w, "\n  %d agents: %s, %s, %s\n\n",
+	noun := "agents"
+	if len(agents) == 1 {
+		noun = "agent"
+	}
+	fmt.Fprintf(w, "\n  %d %s: %s, %s, %s\n\n",
 		len(agents),
+		noun,
 		green.Render(fmt.Sprintf("%d healthy", counts["HEALTHY"])),
 		yellow.Render(fmt.Sprintf("%d stale", counts["STALE"])),
 		red.Render(fmt.Sprintf("%d dead", counts["DEAD"])),
