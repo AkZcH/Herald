@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/AkZcH/herald/internal/audit"
+	"github.com/AkZcH/herald/internal/metrics"
 	"github.com/AkZcH/herald/internal/raft"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -23,6 +24,7 @@ type Server struct {
 	raftNode    *raft.Node
 	auditWriter *audit.Writer
 	hub         *Hub
+	prom        *metrics.Metrics
 }
 
 func NewServer(nodeID, port string, db *sql.DB, raftNode *raft.Node) *Server {
@@ -34,9 +36,11 @@ func NewServer(nodeID, port string, db *sql.DB, raftNode *raft.Node) *Server {
 		auditWriter: audit.NewWriter(db),
 		hub: newHub(),
 	}
+	s.prom = s.newMetrics()
 	s.router = chi.NewRouter()
 	s.setupMiddleware()
 	s.setupRoutes()
+	s.router.Handle("/metrics", s.prom.Handler())
 	s.http = &http.Server{
 		Addr:         fmt.Sprintf(":%s", port),
 		Handler:      s.router,
