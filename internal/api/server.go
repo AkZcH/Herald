@@ -67,6 +67,7 @@ func (s *Server) setupRoutes() {
 	s.router.Get("/config/{key}/watch", s.handleConfigWatch)
 	s.router.Post("/config/rollback", s.handleRollback)
 	s.router.Get("/agents", s.handleAgentsList)
+	s.router.Get("/audit", s.handleAuditList)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
