@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/AkZcH/herald/internal/audit"
 	"github.com/AkZcH/herald/internal/raft"
@@ -42,6 +43,7 @@ type configGetResponse struct {
 }
 
 func (s *Server) handleConfigWrite(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	var req configWriteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -162,6 +164,7 @@ if req.TargetingLabels != nil {
 })
 s.hub.broadcastTargeted(req.Namespace, string(pushPayload), sel)
 s.hub.notifyWatchers(req.Key, req.Namespace, string(pushPayload))
+s.prom.PropagationLatencyMs.Observe(float64(time.Since(start).Microseconds()) / 1000)
 }
 
 	status := "PENDING"

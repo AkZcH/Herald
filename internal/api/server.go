@@ -37,6 +37,7 @@ func NewServer(nodeID, port string, db *sql.DB, raftNode *raft.Node) *Server {
 		hub: newHub(),
 	}
 	s.prom = s.newMetrics()
+	s.hub.onDrop = s.prom.DeliveryFailuresTotal.Inc
 	s.router = chi.NewRouter()
 	s.setupMiddleware()
 	s.setupRoutes()

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/AkZcH/herald/internal/audit"
 	"github.com/AkZcH/herald/internal/fsm"
@@ -27,6 +28,7 @@ type rollbackResponse struct {
 }
 
 func (s *Server) handleRollback(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	var req rollbackRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -138,6 +140,8 @@ func (s *Server) handleRollback(w http.ResponseWriter, r *http.Request) {
 	})
 	s.hub.broadcastTargeted(req.Namespace, string(pushPayload), targeting.Selector{})
 	s.hub.notifyWatchers(target.Key, req.Namespace, string(pushPayload))
+	s.prom.PropagationLatencyMs.Observe(float64(time.Since(start).Microseconds()) / 1000)
+	s.prom.RollbackTotal.Inc()
 
 	s.auditWriter.Write(r.Context(), audit.Entry{
 		EventType:   audit.EventRollback,

@@ -20,6 +20,7 @@ type Hub struct {
 	clients map[string]*sseClient
 	watchers []*watcher
 	index    *targeting.Index
+	onDrop  func()
 }
 
 func newHub() *Hub {
@@ -76,6 +77,9 @@ func (h *Hub) broadcastTargeted(namespace string, payload string, sel targeting.
 		case client.send <- payload:
 		default:
 			log.Warn().Str("agent_id", client.agentID).Msg("SSE send buffer full, dropping message")
+			if h.onDrop != nil {
+				h.onDrop()
+			} 
 		}
 	}
 }

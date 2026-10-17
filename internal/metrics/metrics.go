@@ -32,7 +32,7 @@ func New(src Sources) *Metrics {
 		registry: prometheus.NewRegistry(),
 		PropagationLatencyMs: prometheus.NewHistogram(prometheus.HistogramOpts{
 			Name:    "herald_propagation_latency_ms",
-			Help:    "Time from receiving a config write to the push being fanned out to agents, in milliseconds.",
+			Help:    "Time from receiving a config write or rollback to the push being fanned out to agents, in milliseconds.",
 			Buckets: []float64{1, 2, 5, 10, 25, 50, 100, 250, 500, 1000},
 		}),
 		RollbackTotal: prometheus.NewCounter(prometheus.CounterOpts{
