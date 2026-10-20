@@ -49,3 +49,31 @@ Herald treats configuration as versioned, replicated data.
 | **Fleet visibility** | Agents report `HEALTHY`, `STALE` (no heartbeat for 1.5 s) or `DEAD` (5 s), together with the version they last applied. `herald status` shows the whole fleet                              |
 | **Observability**    | Prometheus `/metrics` on every node, six Herald-specific metrics, a provisioned Grafana dashboard and structured JSON logs                                                                 |
 | **Operations**       | Migrations run on startup. One `docker compose up` starts a three-node cluster with PostgreSQL, Prometheus and Grafana. Pure Go, built with `CGO_ENABLED=0`                                |
+
+## Architecture
+
+```mermaid
+flowchart LR
+    CLI["herald CLI or HTTP API"] -->|"write"| CP
+
+    subgraph CP["Control plane, 3 nodes"]
+        N1["node-1"] <-->|"gRPC"| N2["node-2"]
+        N2 <-->|"gRPC"| N3["node-3"]
+        N1 <-->|"gRPC"| N3
+    end
+
+    CP --- PG[("PostgreSQL")]
+    CP -->|"SSE push"| AG["Agents"]
+    AG -->|"heartbeat and ack"| CP
+    AG --> APP["Your services read the local cache"]
+    CP -->|"/metrics"| OBS["Prometheus and Grafana"]
+```
+
+1. A write lands on a control-plane node, which stores it as a new `PENDING` version and appends it to the replication log.
+2. The node sends `AppendEntries` to its peers. When a majority acknowledges, the version becomes `COMMITTED`.
+3. The node pushes the change over server-sent events to every agent in the namespace whose labels match.
+4. Each agent applies the change to its local cache, acks it, and keeps heartbeating so the fleet's state stays visible.
+
+All state lives in PostgreSQL, and nodes coordinate leadership through it. Every node serves the same API and exposes its own metrics.
+
+Agents currently receive pushes only from the node they are connected to, so connect agents to the node you write through. The [architecture guide](docs/architecture.md) covers the write path, the data model, failure behavior and this limitation in detail.
