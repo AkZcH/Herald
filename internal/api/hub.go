@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/AkZcH/herald/internal/targeting"
 	"github.com/rs/zerolog/log"
@@ -20,7 +21,9 @@ type Hub struct {
 	clients map[string]*sseClient
 	watchers []*watcher
 	index    *targeting.Index
-	onDrop  func()
+
+	// onDrop is called each time a push is dropped because a client buffer is full
+	onDrop func()
 }
 
 func newHub() *Hub {
@@ -79,7 +82,7 @@ func (h *Hub) broadcastTargeted(namespace string, payload string, sel targeting.
 			log.Warn().Str("agent_id", client.agentID).Msg("SSE send buffer full, dropping message")
 			if h.onDrop != nil {
 				h.onDrop()
-			} 
+			}
 		}
 	}
 }
@@ -134,5 +137,15 @@ func (h *Hub) notifyWatchers(key, namespace, payload string) {
 			default:
 			}
 		}
+	}
+}
+
+// clearWriteDeadline lifts the HTTP server's WriteTimeout for one response.
+// WriteTimeout covers the entire response, so on a long-lived server-sent-event
+// stream it would cut the connection a few seconds after it opens and the next
+// push written to it would be lost.
+func clearWriteDeadline(w http.ResponseWriter) {
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil {
+		log.Warn().Err(err).Msg("could not clear write deadline on stream")
 	}
 }

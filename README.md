@@ -77,3 +77,71 @@ flowchart LR
 All state lives in PostgreSQL, and nodes coordinate leadership through it. Every node serves the same API and exposes its own metrics.
 
 Agents currently receive pushes only from the node they are connected to, so connect agents to the node you write through. The [architecture guide](docs/architecture.md) covers the write path, the data model, failure behavior and this limitation in detail.
+
+## Quickstart
+
+You need Docker with Compose v2 and Go 1.26 or newer (Go is used for the CLI and the agent). Herald is developed and tested on Linux, including WSL2.
+
+**1. Start the cluster**
+
+```bash
+git clone https://github.com/AkZcH/herald.git
+cd herald
+docker compose -f deploy/docker-compose.yml up -d --build
+```
+
+This starts PostgreSQL, three control-plane nodes on ports `7700`, `7701` and `7702`, Prometheus on `9090` and Grafana on `3000`. Database migrations apply automatically on startup. Check that exactly one node reports itself as leader:
+
+```bash
+for port in 7700 7701 7702; do curl -s localhost:$port/cluster/status; echo; done
+```
+
+**2. Install the CLI**
+
+```bash
+make install        # puts `herald` in $(go env GOPATH)/bin
+herald cluster status
+```
+
+Make sure `$(go env GOPATH)/bin` is on your `PATH`. The CLI talks to `http://localhost:7700` by default; use `--url` to point it at another node.
+
+**3. Run an agent**
+
+In a second terminal:
+
+```bash
+HERALD_AGENT_ID=agent-1 \
+HERALD_NAMESPACE=prod \
+HERALD_LABELS=env=prod,region=us-east \
+go run ./cmd/agent
+```
+
+The agent registers with `http://localhost:7700`, opens its stream and serves its local cache on port `8800`.
+
+**4. Push a change**
+
+```bash
+herald config set feature.checkout '{"enabled": true}' --namespace prod
+```
+
+The agent logs `config applied`, and your application can read the value locally:
+
+```bash
+curl -s localhost:8800/config/feature.checkout
+```
+
+**5. Look around**
+
+```bash
+herald status     # every agent, its health and the version it runs
+herald audit      # who changed what, newest first
+```
+
+Open Grafana at <http://localhost:3000/d/herald-overview> (user `admin`, password `herald`) for the _Herald Overview_ dashboard, or Prometheus at <http://localhost:9090>.
+
+**Stop everything**
+
+```bash
+docker compose -f deploy/docker-compose.yml down        # keeps the database volume
+docker compose -f deploy/docker-compose.yml down -v     # also wipes it
+```

@@ -142,7 +142,7 @@ func (s *Server) handleAgentSSE(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "streaming not supported")
 		return
 	}
-
+   	clearWriteDeadline(w)
 	client := s.hub.register(agentID, namespace, labels)
 	defer s.hub.unregister(agentID)
 

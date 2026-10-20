@@ -161,7 +161,7 @@ if err := json.NewDecoder(bytes.NewReader(respBody)).Decode(&result); err != nil
     return err
 }
 
-	fmt.Printf("\n%s writing to leader %s\n", bullet, cyan.Render(controlPlaneURL))
+	fmt.Printf("\n%s writing to %s\n", bullet, cyan.Render(controlPlaneURL))
 	fmt.Printf("%s committed  key=%s  version=%s\n",
 		checkMark,
 		cyan.Render(result.Key),

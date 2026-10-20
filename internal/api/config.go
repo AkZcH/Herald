@@ -306,7 +306,7 @@ func (s *Server) handleConfigWatch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "streaming not supported")
 		return
 	}
-
+	clearWriteDeadline(w)
 	watcher := s.hub.addWatcher(key, namespace)
 	defer s.hub.removeWatcher(watcher)
 
